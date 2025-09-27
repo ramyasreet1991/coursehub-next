@@ -1,0 +1,173 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  INSTRUCTOR
+  LEARNER
+}
+
+enum PublishStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum QuestionType {
+  MCQ
+  MSQ
+  TF
+  SHORT
+}
+
+model User {
+  id        String  @id @default(cuid())
+  email     String  @unique
+  name      String?
+  role      Role    @default(LEARNER)
+  createdAt DateTime @default(now())
+  enrollments Enrollment[]
+  progressEvents ProgressEvent[]
+  attempts    Attempt[]
+  certificates Certificate[]
+}
+
+model Course {
+  id        String  @id @default(cuid())
+  title     String
+  slug      String  @unique
+  summary   String?
+  level     String?
+  imageUrl  String?
+  status    PublishStatus @default(DRAFT)
+  publishedAt DateTime?
+  modules   Module[]
+  quizzes   Quiz[]
+  progressEvents ProgressEvent[]
+  enrollments Enrollment[]
+  certificates Certificate[]
+  @@index([title])
+}
+
+model Module {
+  id       String @id @default(cuid())
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseId String
+  title    String
+  index    Int
+  lessons  Lesson[]
+  @@index([courseId, index])
+}
+
+model Lesson {
+  id        String @id @default(cuid())
+  module    Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  moduleId  String
+  kind      String  // "video" | "article"
+  title     String
+  index     Int
+  content   String? // MDX or HTML
+  videoUrl  String?
+  durationSec Int?
+  progressEvents ProgressEvent[]
+  @@index([moduleId, index])
+}
+
+model Enrollment {
+  id        String @id @default(cuid())
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  course    Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseId  String
+  status    String @default("active")
+  createdAt DateTime @default(now())
+  @@unique([userId, courseId])
+}
+
+model ProgressEvent {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  course    Course?  @relation(fields: [courseId], references: [id])
+  courseId  String?
+  lesson    Lesson?  @relation(fields: [lessonId], references: [id])
+  lessonId  String?
+  kind      String   // view_lesson | complete_lesson | start_quiz | submit_quiz | pass_quiz
+  metaJson  Json?
+  createdAt DateTime @default(now())
+  @@index([userId, courseId, lessonId])
+}
+
+model Quiz {
+  id            String  @id @default(cuid())
+  course        Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseId      String
+  title         String
+  passingScore  Int     @default(60)
+  shuffle       Boolean @default(false)
+  attemptsAllowed Int   @default(3)
+  questions     Question[]
+  attempts      Attempt[]
+}
+
+model Question {
+  id        String @id @default(cuid())
+  quiz      Quiz   @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  quizId    String
+  type      QuestionType
+  prompt    String
+  index     Int
+  points    Int     @default(1)
+  explanation String?
+  choices   Choice[]
+  answers   Answer[]
+  @@index([quizId, index])
+}
+
+model Choice {
+  id         String @id @default(cuid())
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  questionId String
+  label      String
+  isCorrect  Boolean @default(false)
+}
+
+model Attempt {
+  id         String @id @default(cuid())
+  quiz       Quiz   @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  quizId     String
+  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  score      Int    @default(0)
+  startedAt  DateTime @default(now())
+  submittedAt DateTime?
+  passed     Boolean @default(false)
+  answers    Answer[]
+  @@index([quizId, userId])
+}
+
+model Answer {
+  id         String @id @default(cuid())
+  attempt    Attempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  attemptId  String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  questionId String
+  choiceIds  String? // CSV of choice ids for MCQ/MSQ; simple starter
+  textAnswer String?
+}
+
+model Certificate {
+  id         String @id @default(cuid())
+  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  course     Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseId   String
+  issuedAt   DateTime @default(now())
+  serial     String   @unique
+  verifySlug String   @unique
+  pdfUrl     String
+}
